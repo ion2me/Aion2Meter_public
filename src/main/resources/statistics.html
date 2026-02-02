@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Server Statistics</title>
+    <link href="/styles.css" rel="stylesheet" type="text/css" />
+    <link href="/analysis.css" rel="stylesheet" type="text/css" /> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/spoqa-han-sans@3.3.0/css/SpoqaHanSansNeo.min.css" />
+
+    <style>
+        /* 통계 페이지 전용 스타일 오버라이드 */
+        .filter-bar {
+            background: var(--glass-bg);
+            padding: 16px;
+            border-radius: var(--rounded);
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        select {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .import-btn {
+            margin-left: auto;
+            background: var(--dps);
+            color: black;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .rank-row {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .rank-row:hover { background: rgba(255,255,255,0.08); }
+        .rank-row.active { border-left: 3px solid var(--dps); background: rgba(41, 255, 111, 0.1); }
+
+        .bar-container { flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; margin: 0 12px; position: relative; }
+        .bar-fill { height: 100%; background: var(--dps); border-radius: 4px; }
+        .bar-fill.max { background: rgba(255, 255, 255, 0.5); position: absolute; top:0; left:0; height: 100%; z-index: -1; } /* 최고점 표시용 */
+
+    </style>
+</head>
+
+<body>
+<div class="analysis-container">
+
+    <div class="sidebar" style="flex: 0 0 400px;">
+        <div style="font-size: 20px; font-weight: bold; margin-bottom: 12px;">🏆 직업별 DPS 순위</div>
+        <div id="rankingList" style="flex: 1; overflow-y: auto;">
+        </div>
+    </div>
+
+    <div class="main-content">
+
+        <div class="filter-bar">
+            <select id="monthSelect" onchange="loadRanking()"></select>
+            <select id="bossSelect" onchange="loadRanking()"></select>
+            <button class="import-btn" onclick="triggerImport()">DB 업데이트 (Admin)</button>
+        </div>
+
+        <div class="stat-grid" id="jobStatCard" style="display:none;">
+            <div class="stat-card">
+                <div class="stat-label">선택된 직업</div>
+                <div class="stat-value white" id="selJobName">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">표본 수 (로그)</div>
+                <div class="stat-value" id="selJobCount">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">평균 DPS</div>
+                <div class="stat-value" id="selJobAvg">-</div>
+            </div>
+        </div>
+
+        <div class="skill-section" style="margin-top: 20px; display:none;" id="skillSection">
+            <div class="section-title">스킬 효율 분석 (평균 데미지)</div>
+            <div class="skill-header-custom">
+                <div class="cell name" style="flex: 0 0 200px;">스킬명</div>
+                <div class="cell dmg" style="flex: 1;">평균 데미지</div>
+                <div class="cell right" style="width: 80px; text-align: right;">시전수</div>
+            </div>
+            <div class="skill-list-container detailsSkills">
+                <div class="skills" id="skillList"></div>
+            </div>
+        </div>
+
+        <div id="emptyMsg" class="empty-state">
+            좌측에서 직업을 선택하면 상세 스킬 분석이 표시됩니다.
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const formatNum = (num) => new Intl.NumberFormat().format(num);
+
+    // 1. 초기화: 필터 로드
+    async function init() {
+        try {
+            const res = await fetch('/api/stats/filters');
+            const data = await res.json();
+
+            // 월 선택
+            const monthSel = document.getElementById('monthSelect');
+            data.months.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.innerText = m;
+                monthSel.appendChild(opt);
+            });
+
+            // 보스 선택
+            const bossSel = document.getElementById('bossSelect');
+            data.bosses.forEach(b => {
+                const opt = document.createElement('option');
+
+                // [수정] value에 고유 ID(3200_101)를 넣습니다.
+                // 화면에는 이름(분노한 크로메데)을 표시합니다.
+                opt.value = b.id;
+                opt.innerText = b.name;
+
+                bossSel.appendChild(opt);
+            });
+
+            // 데이터가 있으면 바로 첫 로딩
+            if(data.months.length > 0 && data.bosses.length > 0) {
+                loadRanking();
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    // 2. 랭킹 로드
+    async function loadRanking() {
+        const month = document.getElementById('monthSelect').value;
+        const bossId = document.getElementById('bossSelect').value; // [변수명 변경] boss -> bossId
+
+        // UI 초기화
+        document.getElementById('rankingList').innerHTML = '<div style="padding:20px;">로딩중...</div>';
+        document.getElementById('jobStatCard').style.display = 'none';
+        document.getElementById('skillSection').style.display = 'none';
+        document.getElementById('emptyMsg').style.display = 'block';
+
+        // [수정] 파라미터 bossId로 전송
+        const res = await fetch(`/api/stats/ranking?month=${month}&boss=${encodeURIComponent(bossId)}`);
+        const list = await res.json();
+
+        const rankEl = document.getElementById('rankingList');
+        rankEl.innerHTML = '';
+
+        if(list.length === 0) {
+            rankEl.innerHTML = '<div style="padding:20px; opacity:0.5;">데이터가 없습니다.</div>';
+            return;
+        }
+
+        // 그래프 스케일용 최대값
+        const globalMax = Math.max(...list.map(i => i.maxDps));
+
+        list.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.className = 'rank-row';
+
+            const avgPct = globalMax > 0 ? (item.avgDps / globalMax) * 100 : 0;
+            const maxPct = globalMax > 0 ? (item.maxDps / globalMax) * 100 : 0;
+
+            row.innerHTML = `
+                <div style="font-weight:bold; width: 30px;">#${idx+1}</div>
+                <div style="width: 80px;">${item.job}</div>
+                <div class="bar-container">
+                    <div class="bar-fill max" style="width: ${maxPct}%" title="최고점: ${formatNum(item.maxDps)}"></div>
+                    <div class="bar-fill" style="width: ${avgPct}%"></div>
+                </div>
+                <div style="width: 80px; text-align:right; font-weight:bold; color:var(--dps);">${formatNum(item.avgDps)}</div>
+            `;
+
+            row.onclick = () => {
+                document.querySelectorAll('.rank-row').forEach(r => r.classList.remove('active'));
+                row.classList.add('active');
+                loadJobDetails(item);
+            };
+
+            rankEl.appendChild(row);
+        });
+    }
+
+    // 3. 직업 상세 로드
+    async function loadJobDetails(jobItem) {
+        document.getElementById('emptyMsg').style.display = 'none';
+        document.getElementById('jobStatCard').style.display = 'grid';
+        document.getElementById('skillSection').style.display = 'flex';
+
+        // 카드 업데이트
+        document.getElementById('selJobName').innerText = jobItem.job;
+        document.getElementById('selJobCount').innerText = jobItem.count + " records";
+        document.getElementById('selJobAvg').innerText = formatNum(jobItem.avgDps);
+
+        // 스킬 데이터 로드
+        const month = document.getElementById('monthSelect').value;
+        const bossId = document.getElementById('bossSelect').value; // [변수명 변경]
+
+        // [수정] 파라미터 bossId로 전송
+        const res = await fetch(`/api/stats/skills?month=${month}&boss=${encodeURIComponent(bossId)}&job=${encodeURIComponent(jobItem.job)}`);
+        const skills = await res.json();
+
+        const skillEl = document.getElementById('skillList');
+        skillEl.innerHTML = '';
+
+        const maxDmg = skills.length > 0 ? Math.max(...skills.map(s => s.avgDamage)) : 0;
+
+        skills.forEach(s => {
+            const row = document.createElement('div');
+            row.className = 'skillRow';
+            const pct = maxDmg > 0 ? (s.avgDamage / maxDmg) * 100 : 0;
+
+            row.innerHTML = `
+                <div class="cell name" style="flex: 0 0 200px;">${s.name}</div>
+                <div class="cell dmg" style="flex: 1;">
+                    <div class="dmgFill" style="width: ${pct}%;"></div>
+                    <div class="dmgText">${formatNum(s.avgDamage)}</div>
+                </div>
+                <div class="cell right" style="width: 80px; color:white; justify-content:flex-end;">
+                    ${s.avgCount.toFixed(1)}회
+                </div>
+            `;
+            skillEl.appendChild(row);
+        });
+    }
+
+    // 4. Admin Import 트리거
+    async function triggerImport() {
+        if(!confirm("logs 폴더의 모든 파일을 DB로 가져오시겠습니까? (시간이 걸릴 수 있습니다)")) return;
+
+        try {
+            const btn = document.querySelector('.import-btn');
+            btn.innerText = "처리중...";
+            btn.disabled = true;
+
+            const res = await fetch('/api/admin/import', { method: 'POST' });
+            const data = await res.json();
+
+            alert(data.message);
+            location.reload(); // 새로고침해서 필터 갱신
+        } catch(e) {
+            alert("오류 발생: " + e);
+            document.querySelector('.import-btn').innerText = "DB 업데이트 (Admin)";
+            document.querySelector('.import-btn').disabled = false;
+        }
+    }
+
+    init();
+</script>
+</body>
+</html>

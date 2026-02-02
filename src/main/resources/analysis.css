@@ -1,0 +1,330 @@
+@charset "UTF-8";
+
+/* [기본 레이아웃] */
+body {
+    overflow: hidden;
+    /* 배경은 styles.css의 그라데이션을 따라갑니다 */
+}
+
+.analysis-container {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    gap: 20px;
+    padding: 20px;
+    max-width: 1600px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 10;
+}
+
+/* [좌측 사이드바] */
+.sidebar {
+    flex: 0 0 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* [신규] 캐릭터 변경 버튼 스타일 */
+.sidebar-header {
+    margin-bottom: 8px;
+}
+
+.nav-btn {
+    width: 100%;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.nav-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+}
+
+/* [보스 카드] */
+.boss-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--rounded);
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 8px; /* 리스트 간격 */
+}
+
+.boss-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(4px);
+}
+
+.boss-card.active {
+    background: linear-gradient(90deg, rgba(41, 255, 111, 0.15), transparent); /* 은은한 그라데이션 */
+    border-color: var(--dps);
+    box-shadow: 0 0 15px rgba(41, 255, 111, 0.1);
+}
+
+/* 활성 바 */
+.boss-card.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--dps);
+    box-shadow: 0 0 8px var(--dps);
+}
+
+.boss-icon-placeholder {
+    font-size: 24px;
+    width: 32px;
+    text-align: center;
+}
+
+.boss-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: hidden;
+}
+
+.boss-name {
+    font-weight: bold;
+    font-size: 15px;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.boss-sub {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    display: flex;
+    justify-content: space-between;
+}
+.boss-sub .dps-val { color: var(--dps); font-weight: bold; }
+
+
+/* [메인 컨텐츠] */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+    padding-right: 8px;
+    padding-bottom: 20px;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.stat-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--rounded);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.stat-label {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.stat-value {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--dps);
+    text-shadow: 0 0 10px rgba(41, 255, 111, 0.3);
+}
+.stat-value.white { color: white; text-shadow: none; }
+
+.party-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.party-badge {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+/* [스킬 섹션] */
+.skill-section {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--rounded-lg);
+    padding: 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 300px;
+}
+.section-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 16px;
+    padding-left: 12px;
+    border-left: 4px solid var(--dps);
+    color: white;
+}
+.skill-header-custom {
+    display: flex;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 10px 0;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 13px;
+}
+.skill-header-custom .cell { padding: 0 12px; }
+.skill-list-container { flex: 1; overflow-y: auto; padding: 0; }
+
+/* [모달 - Glassmorphism & Gradient 적용] */
+.char-modal {
+    position: fixed;
+    inset: 0;
+    /* 배경: 뒤가 살짝 비치는 어두운 블러 */
+    background: rgba(5, 10, 20, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.4s ease;
+}
+
+/* 모달 내부 컨텐츠 감싸개 */
+.char-modal-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 900px;
+}
+
+.char-modal-title {
+    font-size: 28px;
+    font-weight: 800;
+    margin-bottom: 40px;
+    color: white;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    letter-spacing: -0.5px;
+}
+
+.char-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 24px;
+    width: 90%;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+/* [캐릭터 선택 카드 - 유리 효과 디자인] */
+.char-btn {
+    /* 기본 유리 효과 */
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+
+    border-radius: 20px;
+    padding: 30px 20px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 호버 시 효과: 초록색 제거, 밝은 유리 + 빛나는 테두리 */
+.char-btn:hover {
+    background: rgba(255, 255, 255, 0.1); /* 약간 더 밝게 */
+    border-color: rgba(255, 255, 255, 0.5); /* 테두리 하얗게 빛남 */
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4),
+    0 0 15px rgba(255, 255, 255, 0.1); /* 은은한 글로우 */
+}
+
+/* 클릭 시 효과 */
+.char-btn:active {
+    transform: scale(0.96);
+}
+
+/* 캐릭터 아이콘 */
+.char-icon {
+    font-size: 40px;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+    transition: transform 0.3s;
+}
+
+.char-btn:hover .char-icon {
+    transform: scale(1.1);
+}
+
+/* 캐릭터 이름 */
+.char-name {
+    font-size: 18px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.loading-text {
+    margin-top: 30px;
+    color: white;
+    font-weight: bold;
+    font-size: 18px;
+    animation: pulse 1.5s infinite;
+    display: none;
+}
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }

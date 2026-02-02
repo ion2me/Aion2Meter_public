@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DPS Analysis</title>
+
+    <link href="/styles.css" rel="stylesheet" type="text/css" />
+    <link href="/analysis.css" rel="stylesheet" type="text/css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/spoqa-han-sans@3.3.0/css/SpoqaHanSansNeo.min.css" />
+
+    <style>
+        /* 사이드바 토글 스위치 스타일 */
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .toggle-label { font-size: 13px; color: #bbb; font-weight: bold; }
+
+        /* 스위치 디자인 */
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4f545c; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #5865F2; }
+        input:checked + .slider:before { transform: translateX(14px); }
+
+        /* 공유 요청 모달 스타일 */
+        .share-modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7); z-index: 9999;
+            justify-content: center; align-items: center; backdrop-filter: blur(2px);
+        }
+        .share-modal-box {
+            background: #2f3136; width: 400px; padding: 24px; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; color: #fff;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .share-title { font-size: 20px; font-weight: bold; margin-bottom: 12px; }
+        .share-desc { font-size: 15px; color: #dcddde; margin-bottom: 20px; line-height: 1.5; }
+        .share-btns { display: flex; gap: 12px; justify-content: center; margin-bottom: 16px; }
+        .btn-common { flex: 1; padding: 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; }
+        .btn-accept { background: #5865F2; }
+        .btn-accept:hover { background: #4752C4; }
+        .btn-deny { background: #4f545c; }
+        .btn-deny:hover { background: #686d73; }
+        .share-disclaimer { font-size: 12px; color: #72767d; text-align: left; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; }
+    </style>
+</head>
+
+<body>
+
+<div class="char-modal" id="charModal">
+    <div class="char-modal-content">
+        <div class="char-modal-title">분석할 캐릭터 선택</div>
+        <div class="char-list" id="charList"></div>
+        <div class="loading-text" id="loadingText">데이터 분석 중...</div>
+    </div>
+</div>
+
+<div class="share-modal-overlay" id="shareModal">
+    <div class="share-modal-box">
+        <div class="share-title">지난주 전투 기록 공유</div>
+        <div class="share-desc">
+            더 정확한 통계 집계를 위해<br>
+            지난주 데이터를 개발자에게 공유하시겠습니까?
+        </div>
+        <div class="share-btns">
+            <button class="btn-common btn-deny" onclick="handleShareDecision(false)">거절 (이번 주 건너뛰기)</button>
+            <button class="btn-common btn-accept" id="btnAccept" onclick="handleShareDecision(true)">수락 및 자동 공유 켜기</button>
+        </div>
+        <div class="share-disclaimer">
+            * 수락 시 사이드바의 '자동 공유'가 켜집니다.<br>
+            * 개인정보는 수집하지 않으며, 주 1회만 전송됩니다.
+        </div>
+    </div>
+</div>
+
+<div class="analysis-container" id="mainContainer" style="opacity: 0; pointer-events: none; transition: opacity 0.5s;">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <button class="nav-btn" onclick="openCharModal()">캐릭터 변경</button>
+        </div>
+        <div id="bossList" style="flex: 1; overflow-y: auto; padding-right: 8px;"></div>
+
+        <div class="sidebar-footer">
+            <span class="toggle-label">지난주 기록 자동 공유</span>
+            <label class="switch">
+                <input type="checkbox" id="chkAutoShare" onchange="toggleAutoShare()">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="stat-grid">
+            <div class="stat-card"><div class="stat-label">평균 DPS</div><div class="stat-value" id="valAvgDps">-</div></div>
+            <div class="stat-card"><div class="stat-label">최고 DPS</div><div class="stat-value" id="valMaxDps">-</div></div>
+            <div class="stat-card"><div class="stat-label">처치 횟수</div><div class="stat-value white" id="valKillCount">-</div></div>
+            <div class="stat-card"><div class="stat-label">Best Synergy</div><div class="party-list" id="valBestParty"><span class="party-badge">-</span></div></div>
+        </div>
+        <div class="skill-section">
+            <div class="section-title">스킬별 평균 데미지</div>
+            <div class="skill-header-custom">
+                <div class="cell name" style="flex: 0 0 200px;">스킬명</div>
+                <div class="cell dmg" style="flex: 1;">평균 데미지</div>
+                <div class="cell right" style="width: 80px; text-align: right;">점유율</div>
+            </div>
+            <div class="skill-list-container detailsSkills"><div class="skills" id="skillList"></div></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const formatNum = (num) => new Intl.NumberFormat().format(num);
+    const STORAGE_KEY_BACKUP = 'lastBackupWeek_System'; // 저장 키 변경 (Month -> Week)
+    let bossMapping = {};
+    let currentNickname = "";
+
+    function openCharModal() {
+        const container = document.getElementById('mainContainer');
+        container.style.opacity = '0';
+        container.style.pointerEvents = 'none';
+        document.getElementById('charModal').style.display = 'flex';
+        document.getElementById('loadingText').style.display = 'none';
+        document.getElementById('charList').style.display = 'grid';
+    }
+
+    async function init() {
+        try {
+            try {
+                const mapRes = await fetch('/boss_mapping.json');
+                if (mapRes.ok) bossMapping = await mapRes.json();
+            } catch (e) { }
+
+            const res = await fetch('/api/analysis/characters');
+            const chars = await res.json();
+            const listEl = document.getElementById('charList');
+            listEl.innerHTML = '';
+
+            if(chars.length === 0) {
+                listEl.innerHTML = '<div style="grid-column: 1/-1; color:white; text-align:center;">저장된 로그가 없습니다.</div>';
+                return;
+            }
+
+            chars.forEach(name => {
+                const btn = document.createElement('div');
+                btn.className = 'char-btn';
+                btn.innerHTML = `<div class="char-name">${name}</div>`;
+                btn.onclick = () => loadReport(name);
+                listEl.appendChild(btn);
+            });
+
+            const isAgreed = localStorage.getItem('autoShareAgreed') === 'true';
+            const chk = document.getElementById('chkAutoShare');
+            if(chk) chk.checked = isAgreed;
+
+        } catch (e) {
+            alert("서버 연결 실패");
+        }
+    }
+
+    async function loadReport(nickname) {
+        currentNickname = nickname;
+        document.getElementById('loadingText').style.display = 'block';
+        document.getElementById('charList').style.display = 'none';
+
+        try {
+            const res = await fetch(`/api/analysis/report?nickname=${encodeURIComponent(nickname)}`);
+            const data = await res.json();
+
+            document.getElementById('charModal').style.display = 'none';
+            const container = document.getElementById('mainContainer');
+            container.style.opacity = '1';
+            container.style.pointerEvents = 'auto';
+
+            renderSidebar(data.bossStats);
+            if (data.bossStats.length > 0) selectBoss(data.bossStats[0]);
+            else document.querySelector('.main-content').innerHTML = '<div class="empty-state">데이터 부족</div>';
+
+            checkAndExecuteBackup();
+
+        } catch (e) {
+            alert("오류 발생");
+            openCharModal();
+        }
+    }
+
+    function renderSidebar(bossStats) {
+        const listEl = document.getElementById('bossList');
+        listEl.innerHTML = '';
+        bossStats.forEach((boss, index) => {
+            const card = document.createElement('div');
+            card.className = `boss-card ${index === 0 ? 'active' : ''}`;
+            let displayName = bossMapping[boss.bossId] || bossMapping[`${boss.bossId}_0`] || boss.bossName;
+            card.innerHTML = `
+                <div class="boss-info">
+                    <div class="boss-name" title="${displayName}">${displayName}</div>
+                    <div class="boss-sub"><span>${boss.killCount} kills</span><span class="dps-val">${formatNum(boss.avgDps)}</span></div>
+                </div>`;
+            card.onclick = () => {
+                document.querySelectorAll('.boss-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                selectBoss(boss);
+            };
+            listEl.appendChild(card);
+        });
+    }
+
+    function selectBoss(bossData) {
+        document.getElementById('valAvgDps').innerText = formatNum(bossData.avgDps);
+        document.getElementById('valMaxDps').innerText = formatNum(bossData.bestDps);
+        document.getElementById('valKillCount').innerText = bossData.killCount + ' 회';
+        const partyContainer = document.getElementById('valBestParty');
+        if (bossData.bestParty.length > 0) partyContainer.innerHTML = bossData.bestParty.map(job => `<span class="party-badge">${job}</span>`).join('');
+        else partyContainer.innerHTML = '<span style="opacity:0.5; font-size:12px; color:white;">솔로</span>';
+
+        const skillListEl = document.getElementById('skillList');
+        skillListEl.innerHTML = '';
+        bossData.skillStats.forEach(skill => {
+            const row = document.createElement('div');
+            row.className = 'skillRow';
+            const sharePct = skill.share.toFixed(1);
+            row.innerHTML = `
+                <div class="cell name" style="flex: 0 0 200px;">${skill.name}</div>
+                <div class="cell dmg" style="flex: 1;"><div class="dmgFill" style="width: ${sharePct}%;"></div><div class="dmgText">${formatNum(skill.avgDamage)}</div></div>
+                <div class="cell right" style="width: 80px; font-weight:bold; color:white; justify-content:flex-end;">${sharePct}%</div>`;
+            skillListEl.appendChild(row);
+        });
+    }
+
+    // =========================================================
+    // 자동 공유 및 백업 로직 (주 단위 적용)
+    // =========================================================
+
+    // 이번 주 월요일 날짜를 ID로 사용 (예: "2026-02-02")
+    function getCurrentWeekId() {
+        const d = new Date();
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diff));
+        return monday.toISOString().slice(0, 10);
+    }
+
+    function toggleAutoShare() {
+        const chk = document.getElementById('chkAutoShare');
+        localStorage.setItem('autoShareAgreed', chk.checked);
+        if (chk.checked) checkAndExecuteBackup();
+    }
+
+    function checkAndExecuteBackup() {
+        // 주 단위 체크 (이번 주 월요일 날짜와 비교)
+        const lastCheckedWeek = localStorage.getItem(STORAGE_KEY_BACKUP);
+        const currentWeekId = getCurrentWeekId();
+
+        if (lastCheckedWeek === currentWeekId) return; // 이번 주는 이미 완료됨
+
+        const isAuto = localStorage.getItem('autoShareAgreed') === 'true';
+        if (isAuto) {
+            performUpload(true);
+        } else {
+            document.getElementById('shareModal').style.display = 'flex';
+        }
+    }
+
+    function handleShareDecision(isAccepted) {
+        const modal = document.getElementById('shareModal');
+        const btnAccept = document.getElementById('btnAccept');
+
+        if (isAccepted) {
+            const chk = document.getElementById('chkAutoShare');
+            if (chk) {
+                chk.checked = true;
+                localStorage.setItem('autoShareAgreed', 'true');
+            }
+
+            btnAccept.innerText = "전송 중...";
+            btnAccept.disabled = true;
+
+            performUpload(false, () => {
+                modal.style.display = 'none';
+                btnAccept.innerText = "수락 및 자동 공유 켜기";
+                btnAccept.disabled = false;
+            });
+        } else {
+            markAsDone();
+            modal.style.display = 'none';
+        }
+    }
+
+    async function performUpload(isSilent, callback) {
+        try {
+            // [API 주소 변경] discord-last-week
+            const res = await fetch('/api/share/discord-last-week', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nickname: currentNickname || 'User' })
+            });
+            const data = await res.json();
+
+            if (data.status === 'success' || data.status === 'no_file') {
+                markAsDone();
+                if (!isSilent && data.status === 'success') alert("✅ 전송 완료! '자동 공유'가 켜졌습니다.");
+            } else {
+                if (!isSilent) alert("❌ 실패: " + data.msg);
+            }
+        } catch (e) {
+            if (!isSilent) alert("통신 오류");
+        } finally {
+            if (callback) callback();
+        }
+    }
+
+    function markAsDone() {
+        // 저장 시 이번 주 ID(월요일 날짜) 사용
+        localStorage.setItem(STORAGE_KEY_BACKUP, getCurrentWeekId());
+    }
+
+    init();
+</script>
+</body>
+</html>
