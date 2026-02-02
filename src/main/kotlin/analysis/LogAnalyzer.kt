@@ -6,43 +6,40 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 
 object LogAnalyzer {
+    // JSON 파서 설정
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
     }
 
-    /**
-     * [시간 필터] 이번 주 월요일 0시 0분 0초의 타임스탬프(ms)를 구합니다.
-     */
-    private fun getStartOfThisWeek(): Long {
-        return LocalDate.now()
-            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) // 이번 주 월요일(오늘 포함)
-            .atStartOfDay(ZoneId.systemDefault()) // 00:00:00
-            .toInstant()
-            .toEpochMilli()
+
+    private fun getThisWeekPattern(): String {
+        val today = LocalDate.now()
+        val mondayDate = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        return mondayDate.format(DateTimeFormatter.ISO_DATE)
     }
 
-    /**
-     * logs 폴더를 스캔하여 [이번 주] 로그에 등장한 캐릭터 이름 목록을 반환합니다.
-     * 월요일 이전의 옛날 파일은 읽지 않으며, 내용 중에서도 월요일 이후 전투만 집계합니다.
-     */
-    fun getAvailableCharacters(): List<String> {
+
+    private fun getWeeklyFiles(): List<File> {
         val logDir = PathManager.getLogDir()
         if (!logDir.exists()) return emptyList()
 
-        // 1. 기준 시간 설정 (이번 주 월요일)
-        val startOfWeek = getStartOfThisWeek()
+        val weekPattern = getThisWeekPattern()
 
-        // 2. 파일 수정 시간으로 1차 필터링 (오래된 파일은 아예 열지 않음)
-        val files = logDir.listFiles()?.filter {
-            it.extension == "json" && it.lastModified() >= startOfWeek
-        }
-        if (files.isNullOrEmpty()) return emptyList()
+        // 파일명이 "log_2026-01-26_..." 형태이므로 weekPattern이 포함된 것만 필터링
+        return logDir.listFiles()?.filter { file ->
+            file.extension == "json" && file.name.contains(weekPattern)
+        } ?: emptyList()
+    }
+
+    fun getAvailableCharacters(): List<String> {
+        val files = getWeeklyFiles()
+        if (files.isEmpty()) return emptyList()
 
         val nameCounts = mutableMapOf<String, Int>()
 
@@ -51,46 +48,35 @@ object LogAnalyzer {
                 val content = file.readText()
                 val logs = json.decodeFromString<List<LogRoot>>(content)
 
-                // 3. 실제 로그 타임스탬프로 2차 필터링 (이번 주 데이터만 카운트)
-                logs.filter { it.meta.timestamp >= startOfWeek }
-                    .forEach { log ->
-                        log.records.forEach { record ->
-                            nameCounts[record.name] = (nameCounts[record.name] ?: 0) + 1
-                        }
+                logs.forEach { log ->
+                    log.records.forEach { record ->
+                        nameCounts[record.name] = (nameCounts[record.name] ?: 0) + 1
                     }
+                }
             } catch (e: Exception) {
-                // 파싱 에러 무시
+                println("⚠️ 파일 파싱 실패 (${file.name}): ${e.message}")
             }
         }
 
-        // 등장 횟수 순으로 정렬하여 반환
         return nameCounts.filter { it.value >= 1 }
             .entries.sortedByDescending { it.value }
             .map { it.key }
     }
 
-    /**
-     * 특정 닉네임의 "이번 주(월요일~현재)" 전투 기록을 분석합니다.
-     */
     fun analyze(targetNickname: String): AnalysisResult {
-        val logDir = PathManager.getLogDir()
-        if (!logDir.exists()) return AnalysisResult(targetNickname, 0, emptyList())
+        val files = getWeeklyFiles()
 
-        val startOfWeek = getStartOfThisWeek()
+        if (files.isEmpty()) return AnalysisResult(targetNickname, 0, emptyList())
 
-        // 1. 파일 읽기 및 평탄화 (여기도 이번 주 필터 적용)
-        val validLogs = logDir.listFiles()
-            ?.filter { it.extension == "json" && it.lastModified() >= startOfWeek }
-            ?.mapNotNull { file ->
-                try {
-                    json.decodeFromString<List<LogRoot>>(file.readText())
-                } catch (e: Exception) {
-                    null
-                }
+        // 1. 이번 주 파일들만 읽어서 리스트로 평탄화
+        val validLogs = files.mapNotNull { file ->
+            try {
+                json.decodeFromString<List<LogRoot>>(file.readText())
+            } catch (e: Exception) {
+                null
             }
-            ?.flatten()
-            ?.filter { log -> log.meta.timestamp >= startOfWeek }
-            ?: emptyList()
+        }
+            .flatten()
 
         // 2. 내가 참여한 전투만 필터링
         val myLogs = validLogs.filter { log ->
@@ -101,7 +87,7 @@ object LogAnalyzer {
             return AnalysisResult(targetNickname, 0, emptyList())
         }
 
-        // 3. 보스별 그룹화
+        // 3. 보스별로 그룹화
         val logsByBoss = myLogs.groupBy { log ->
             val code = log.meta.target.code
             if (code != null && code != 0) {
@@ -111,7 +97,7 @@ object LogAnalyzer {
             }
         }
 
-        // 4. 통계 계산
+        // 4. 각 보스별 통계 계산
         val bossStats = logsByBoss.mapNotNull { (_, logs) ->
             calculateBossStat(targetNickname, logs)
         }.sortedByDescending { it.killCount }
@@ -125,12 +111,12 @@ object LogAnalyzer {
 
     /**
      * 특정 보스에 대한 통계를 계산합니다.
-     * (중앙값 필터링 로직 포함)
+     * 이상치(Median ±10%) 제거 로직 포함.
      */
     private fun calculateBossStat(nickname: String, rawLogs: List<LogRoot>): BossStat? {
         if (rawLogs.isEmpty()) return null
 
-        // [Step 1] 이상치 제거 (Outlier Filtering)
+        // [Step 1] 이상치 제거
         val damageList = rawLogs
             .map { it.meta.target.totalDamage }
             .filter { it > 0 }
@@ -146,11 +132,10 @@ object LogAnalyzer {
 
         val validLogs = rawLogs.filter { log ->
             val dmg = log.meta.target.totalDamage
-            dmg >= lowerBound && dmg <= upperBound
+            dmg in lowerBound..upperBound
         }
 
         if (validLogs.isEmpty()) return null
-
 
         // [Step 2] 통계 계산
         val myRecords = validLogs.mapNotNull { log ->
